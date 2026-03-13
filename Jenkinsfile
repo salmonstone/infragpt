@@ -92,20 +92,16 @@ pipeline {
 
     post {
         success {
-            echo '✅ ========================'
-            echo '   PIPELINE SUCCEEDED!'
-            echo '   InfraGPT is LIVE!'
-            echo '========================'
+            echo '✅ PIPELINE SUCCEEDED! InfraGPT is LIVE!'
         }
         failure {
-            echo '❌ ========================'
-            echo '   PIPELINE FAILED'
-            echo '   Check stage logs above'
-            echo '========================'
+            echo '❌ PIPELINE FAILED - check stage logs above'
         }
         always {
-            sh 'docker image prune -f || true'
-            sh 'docker logout || true'
+            script {
+                sh 'docker image prune -f || true'
+                sh 'docker logout || true'
+            }
         }
     }
 }
