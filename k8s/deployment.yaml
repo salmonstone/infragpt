@@ -1,10 +1,10 @@
 ---
+# ── Main App Deployment ──────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: infragpt
-  labels:
-    app: infragpt
+  namespace: infragpt
 spec:
   replicas: 2
   selector:
@@ -24,66 +24,128 @@ spec:
         prometheus.io/port: "5000"
         prometheus.io/path: "/metrics"
     spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: init-log-dirs
+          image: busybox:1.36
+          command: ["sh", "-c", "mkdir -p /var/log/infragpt && chmod 777 /var/log/infragpt"]
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/infragpt
+ 
       containers:
+        # ── 1. Main InfraGPT App ──────────────────────────
         - name: infragpt
           image: salmonstone/infragpt:IMAGE_TAG_PLACEHOLDER
-          imagePullPolicy: Always
-
           ports:
             - containerPort: 5000
-
           env:
             - name: GROQ_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: infragpt-secrets
                   key: GROQ_API_KEY
-
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GUNICORN_ACCESS_LOG
+              value: "/var/log/infragpt/gunicorn-access.log"
+            - name: GUNICORN_ERROR_LOG
+              value: "/var/log/infragpt/gunicorn-error.log"
           resources:
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: "150m"
+              memory: "256Mi"
             limits:
-              cpu: "500m"
-              memory: "512Mi"
-
+              cpu: "600m"
+              memory: "768Mi"
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/infragpt
           livenessProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 40
+            initialDelaySeconds: 30
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 5
-
           readinessProbe:
             httpGet:
               path: /health
               port: 5000
-            initialDelaySeconds: 20
+            initialDelaySeconds: 10
             periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
+ 
+        # ── 2. Filebeat Sidecar ─────────────────────────
+        # Shares /var/log/infragpt volume with the app
+        # Ships logs to Logstash:5044 (app-logs pipeline)
+        - name: filebeat-sidecar
+          image: docker.elastic.co/beats/filebeat:8.12.0
+          args: ["-c", "/etc/filebeat/filebeat.yml", "-e"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: filebeat-sidecar-config
+              mountPath: /etc/filebeat/filebeat.yml
+              subPath: filebeat.yml
+              readOnly: true
+            - name: app-logs
+              mountPath: /var/log/infragpt
+              readOnly: true
+ 
+      volumes:
+        - name: app-logs
+          emptyDir: {}          # shared between app + sidecar
+        - name: filebeat-sidecar-config
+          configMap:
+            name: filebeat-sidecar-config
+ 
 ---
+# ── Service — ClusterIP (Ingress handles external) ──────────
 apiVersion: v1
 kind: Service
 metadata:
   name: infragpt-service
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+  namespace: infragpt
 spec:
-  type: LoadBalancer
   selector:
     app: infragpt
   ports:
-    - protocol: TCP
-      port: 80
+    - port: 80
       targetPort: 5000
+  type: ClusterIP   # was LoadBalancer — Ingress replaces it
+ 
 ---
+# ── HPA — scale 2 to 6 pods ──────────────────────────────────
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: infragpt-hpa
+  namespace: infragpt
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -104,3 +166,21 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+ 
+---
+# ── PodDisruptionBudget — always keep 1 pod alive ────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: infragpt-pdb
+  namespace: infragpt
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: infragpt

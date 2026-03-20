@@ -1,0 +1,28 @@
+---
+# ── Replace YOUR_DOMAIN.com with your actual domain ─────────
+# OR use the Nginx LB hostname directly (get it after Phase 11)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: infragpt-ingress
+  namespace: infragpt
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, OPTIONS"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: infragpt.YOUR_DOMAIN.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: infragpt-service
+                port:
+                  number: 80

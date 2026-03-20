@@ -1,0 +1,61 @@
+replicaCount: 2
+image:
+  repository: salmonstone/infragpt
+  pullPolicy: IfNotPresent
+  tag: "latest"
+namespace: infragpt
+secret:
+  name: infragpt-secrets
+  groqApiKeyRef: GROQ_API_KEY
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 5000
+ingress:
+  enabled: true
+  className: nginx
+  host: infragpt.YOUR_DOMAIN.com
+  tls:
+    enabled: false
+resources:
+  app:
+    requests:
+      cpu: "150m"
+      memory: "256Mi"
+    limits:
+      cpu: "600m"
+      memory: "768Mi"
+  filebeat:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 60
+  targetMemoryUtilizationPercentage: 70
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+filebeat:
+  enabled: true
+  image: docker.elastic.co/beats/filebeat:8.12.0
+  logstashHost: logstash-svc.logging.svc.cluster.local
+  logstashPort: 5044
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readiness:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 5
+prometheus:
+  scrape: true
+  port: "5000"
+  path: /metrics

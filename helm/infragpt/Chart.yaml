@@ -1,0 +1,8 @@
+apiVersion: v2
+name: infragpt
+description: AI-Powered DevOps Assistant Helm chart
+type: application
+version: 1.0.0
+appVersion: "latest"
+maintainers:
+  - name: Aryan Singh Chauhan

@@ -1,0 +1,203 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+      annotations:
+        prometheus.io/scrape: "{{ .Values.prometheus.scrape }}"
+        prometheus.io/port: "{{ .Values.prometheus.port }}"
+        prometheus.io/path: "{{ .Values.prometheus.path }}"
+    spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        - name: init-log-dirs
+          image: busybox:1.36
+          command: ["sh", "-c", "mkdir -p /var/log/infragpt && chmod 777 /var/log/infragpt"]
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/infragpt
+      containers:
+        - name: {{ .Release.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+          env:
+            - name: GROQ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secret.name }}
+                  key: {{ .Values.secret.groqApiKeyRef }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GUNICORN_ACCESS_LOG
+              value: "/var/log/infragpt/gunicorn-access.log"
+            - name: GUNICORN_ERROR_LOG
+              value: "/var/log/infragpt/gunicorn-error.log"
+          resources:
+            requests:
+              cpu: {{ .Values.resources.app.requests.cpu }}
+              memory: {{ .Values.resources.app.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.app.limits.cpu }}
+              memory: {{ .Values.resources.app.limits.memory }}
+          volumeMounts:
+            - name: app-logs
+              mountPath: /var/log/infragpt
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: {{ .Values.service.targetPort }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
+ 
+        {{- if .Values.filebeat.enabled }}
+        - name: filebeat-sidecar
+          image: {{ .Values.filebeat.image }}
+          args: ["-c", "/etc/filebeat/filebeat.yml", "-e"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: {{ .Values.resources.filebeat.requests.cpu }}
+              memory: {{ .Values.resources.filebeat.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.filebeat.limits.cpu }}
+              memory: {{ .Values.resources.filebeat.limits.memory }}
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: filebeat-sidecar-config
+              mountPath: /etc/filebeat/filebeat.yml
+              subPath: filebeat.yml
+              readOnly: true
+            - name: app-logs
+              mountPath: /var/log/infragpt
+              readOnly: true
+        {{- end }}
+ 
+      volumes:
+        - name: app-logs
+          emptyDir: {}
+        {{- if .Values.filebeat.enabled }}
+        - name: filebeat-sidecar-config
+          configMap:
+            name: filebeat-sidecar-config
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-service
+  namespace: {{ .Values.namespace }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: {{ .Release.Name }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-ingress
+  namespace: {{ .Values.namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-service
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}
+{{- if .Values.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-hpa
+  namespace: {{ .Values.namespace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Release.Name }}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+{{- end }}
+{{- if .Values.podDisruptionBudget.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-pdb
+  namespace: {{ .Values.namespace }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+{{- end }}

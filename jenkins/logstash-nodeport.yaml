@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash-jenkins-nodeport
+  namespace: logging
+spec:
+  selector:
+    app: logstash
+  type: NodePort
+  ports:
+    - port: 5046
+      targetPort: 5046
+      nodePort: 30046
