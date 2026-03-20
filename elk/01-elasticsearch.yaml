@@ -52,18 +52,18 @@ spec:
             - containerPort: 9300
           env:
             - name: ES_JAVA_OPTS
-              value: "-Xms512m -Xmx512m"
+              value: "-Xms256m -Xmx256m"
             - name: discovery.type
               value: single-node
             - name: xpack.security.enabled
               value: "false"
           resources:
             requests:
-              cpu: "500m"
-              memory: "1Gi"
+              cpu: "300m"
+              memory: "512Mi"
             limits:
-              cpu: "1000m"
-              memory: "2Gi"
+              cpu: "800m"
+              memory: "1500Mi"
           volumeMounts:
             - name: elasticsearch-data
               mountPath: /usr/share/elasticsearch/data
@@ -91,7 +91,7 @@ spec:
         name: elasticsearch-data
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: gp2
+        storageClassName: gp3
         resources:
           requests:
             storage: 20Gi
