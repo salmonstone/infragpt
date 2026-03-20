@@ -117,7 +117,7 @@ pipeline {
           kubectl apply -f elk/04-filebeat.yaml
  
           kubectl rollout status statefulset/elasticsearch \
-            -n ${ELK_NAMESPACE} --timeout=300s
+            -n ${ELK_NAMESPACE} --timeout=600s
  
           kubectl rollout status deployment/logstash \
             -n ${ELK_NAMESPACE} --timeout=180s
