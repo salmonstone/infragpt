@@ -108,7 +108,9 @@ spec:
     app: elasticsearch
   ports:
     - port: 9200
+      name: http
     - port: 9300
+      name: transport
  
 ---
 apiVersion: v1
