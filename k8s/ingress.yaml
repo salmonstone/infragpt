@@ -4,7 +4,6 @@ metadata:
   name: infragpt-ingress
   namespace: infragpt
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/limit-rps: "10"
     cert-manager.io/cluster-issuer: letsencrypt-prod
