@@ -16,7 +16,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: infragpt.infragpt.online
+    - host: www.infragpt.online
       http:
         paths:
           - path: /
