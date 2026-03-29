@@ -67,17 +67,14 @@ pipeline {
       }
     }
  
-    stage('Terraform Provision') {
-      steps {
+   stage('Terraform Provision') {
+    steps {
         dir('terraform') {
-          sh '''
-            echo "Skipping terraform - infra already running"
-            echo "skip"
-            echo "skip"
-          '''
+            sh 'terraform init'
+            sh 'terraform apply -auto-approve'
         }
-      }
     }
+}
  
     stage('Configure kubectl') {
       steps {
