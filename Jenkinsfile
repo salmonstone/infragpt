@@ -104,6 +104,21 @@ pipeline {
         '''
       }
     }
+
+     stage('Namespace + Secrets') {
+      steps {
+        sh '''
+          kubectl create namespace ${K8S_NAMESPACE} \
+            --dry-run=client -o yaml | kubectl apply -f -
+ 
+          kubectl create secret generic infragpt-secrets \
+            --from-literal=GROQ_API_KEY=${GROQ_API_KEY} \
+            --namespace=${K8S_NAMESPACE} \
+            --dry-run=client -o yaml | kubectl apply -f -
+        '''
+      }
+    }
+    
  
     stage('ELK Stack Deploy') {
       steps {
@@ -124,19 +139,6 @@ pipeline {
       }
     }
  
-    stage('Namespace + Secrets') {
-      steps {
-        sh '''
-          kubectl create namespace ${K8S_NAMESPACE} \
-            --dry-run=client -o yaml | kubectl apply -f -
- 
-          kubectl create secret generic infragpt-secrets \
-            --from-literal=GROQ_API_KEY=${GROQ_API_KEY} \
-            --namespace=${K8S_NAMESPACE} \
-            --dry-run=client -o yaml | kubectl apply -f -
-        '''
-      }
-    }
  
     stage('Apply Network Policies') {
       steps {
