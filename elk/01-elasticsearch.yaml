@@ -1,11 +1,21 @@
 ---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp2-immediate
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp2
+volumeBindingMode: Immediate
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: logging
   labels:
     app.kubernetes.io/part-of: elk-stack
-
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -20,7 +30,6 @@ data:
     xpack.security.enabled: false
     xpack.monitoring.collection.enabled: true
     indices.memory.index_buffer_size: 20%
-
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -101,7 +110,6 @@ spec:
         resources:
           requests:
             storage: 20Gi
-
 ---
 apiVersion: v1
 kind: Service
@@ -117,7 +125,6 @@ spec:
       name: http
     - port: 9300
       name: transport
-
 ---
 apiVersion: v1
 kind: Service
