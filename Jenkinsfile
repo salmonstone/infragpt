@@ -88,22 +88,25 @@ pipeline {
     }
  
     stage('Nginx Ingress Controller') {
-      steps {
-        sh '''
-          if kubectl get ns ${INGRESS_NAMESPACE} > /dev/null 2>&1; then
-            echo "Nginx Ingress already installed — skipping"
-          else
-            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml
-            kubectl wait --namespace ${INGRESS_NAMESPACE} \
-              --for=condition=ready pod \
-              --selector=app.kubernetes.io/component=controller \
-              --timeout=180s
-            echo "Nginx Ingress Controller ready"
-          fi
-          kubectl get svc -n ${INGRESS_NAMESPACE}
-        '''
-      }
-    }
+  steps {
+    sh '''
+      if kubectl get ns ingress-nginx > /dev/null 2>&1; then
+        echo "Nginx Ingress already installed — skipping"
+      else
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml
+        
+        # Wait for pod to be CREATED first
+        sleep 30
+        
+        kubectl wait --namespace ingress-nginx \
+          --for=condition=ready pod \
+          --selector=app.kubernetes.io/component=controller \
+          --timeout=180s
+      fi
+      kubectl get svc -n ingress-nginx
+    '''
+  }
+}
 
      stage('Namespace + Secrets') {
       steps {
