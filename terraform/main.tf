@@ -57,9 +57,9 @@ resource "aws_eks_addon" "ebs_csi" {
   addon_name   = "aws-ebs-csi-driver"
   depends_on   = [module.eks]
 
-  # Don't fail if addon already exists
   lifecycle {
-    ignore_changes = [addon_version]
+    ignore_changes  = [addon_version]
+    prevent_destroy = false
   }
 }
 
