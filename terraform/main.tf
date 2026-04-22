@@ -50,25 +50,8 @@ module "eks" {
   tags = { Project = var.project_name, ManagedBy = "Terraform" }
 }
 
-# ── EBS CSI Driver ────────────────────────────────────────────────────────
-# Without this Elasticsearch PVC stays Pending forever
-resource "aws_eks_addon" "ebs_csi" {
-  cluster_name = module.eks.cluster_name
-  addon_name   = "aws-ebs-csi-driver"
-  depends_on   = [module.eks]
 
-  lifecycle {
-    ignore_changes  = [addon_version]
-    prevent_destroy = false
-  }
-}
 
-# ── IAM Policy for EBS CSI ────────────────────────────────────────────────
-# Without this EBS CSI controller CrashLoopBackOff
-resource "aws_iam_role_policy_attachment" "ebs_csi_policy" {
-  role       = module.eks.eks_managed_node_groups["infragpt_nodes"].iam_role_name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-}
 
 output "cluster_name"     { value = module.eks.cluster_name }
 output "cluster_endpoint" { value = module.eks.cluster_endpoint }
