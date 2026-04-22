@@ -1,4 +1,17 @@
 ---
+# StorageClass must exist before PVC is created
+# Immediate binding = PVC binds right away without waiting for pod
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp2-immediate
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp2
+volumeBindingMode: Immediate
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+---
 apiVersion: v1
 kind: Namespace
 metadata:
