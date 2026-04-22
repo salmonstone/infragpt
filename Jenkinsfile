@@ -152,27 +152,23 @@ pipeline {
     }
  
     stage('Helm Deploy') {
-      steps {
-        sh '''
-          if ! command -v helm &> /dev/null; then
-            curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          fi
- 
-          helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
-            --namespace ${K8S_NAMESPACE} \
-            --set image.repository=${DOCKERHUB_REPO} \
-            --set image.tag=${IMAGE_TAG} \
-            --set filebeat.enabled=true \
-            --set networkPolicy.enabled=true \
-            --set ingress.enabled=true \
-            --atomic \
-            --timeout 5m \
-            --wait
- 
-          helm status ${HELM_RELEASE} -n ${K8S_NAMESPACE}
-        '''
-      }
-    }
+  steps {
+    sh '''
+      helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
+        --namespace ${K8S_NAMESPACE} \
+        --set image.repository=${DOCKERHUB_REPO} \
+        --set image.tag=${IMAGE_TAG} \
+        --set filebeat.enabled=true \
+        --set networkPolicy.enabled=true \
+        --set ingress.enabled=true \
+        --atomic \
+        --timeout 5m \
+        --wait
+
+      helm status ${HELM_RELEASE} -n ${K8S_NAMESPACE}
+    '''
+  }
+}
  
     stage('Health Check') {
       steps {
