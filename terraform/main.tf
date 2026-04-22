@@ -56,6 +56,11 @@ resource "aws_eks_addon" "ebs_csi" {
   cluster_name = module.eks.cluster_name
   addon_name   = "aws-ebs-csi-driver"
   depends_on   = [module.eks]
+
+  # Don't fail if addon already exists
+  lifecycle {
+    ignore_changes = [addon_version]
+  }
 }
 
 # ── IAM Policy for EBS CSI ────────────────────────────────────────────────
