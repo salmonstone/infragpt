@@ -1,6 +1,6 @@
 pipeline {
   agent any
-
+ 
   environment {
     DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
     DOCKERHUB_REPO        = 'salmonstone/infragpt'
@@ -12,17 +12,16 @@ pipeline {
     HELM_RELEASE          = 'infragpt'
     INGRESS_NAMESPACE     = 'ingress-nginx'
     ELK_NAMESPACE         = 'logging'
-    PATH                  = "/usr/local/bin:${env.PATH}"
   }
-
+ 
   options {
     buildDiscarder(logRotator(numToKeepStr: '10'))
     timeout(time: 45, unit: 'MINUTES')
     disableConcurrentBuilds()
   }
-
+ 
   stages {
-
+ 
     stage('Checkout') {
       steps {
         git branch: 'main',
@@ -30,54 +29,7 @@ pipeline {
         echo "Checked out: ${GIT_COMMIT}"
       }
     }
-
-    stage('Install Tools') {
-      steps {
-        sh '''
-          # Install Helm if not present
-          if ! command -v helm > /dev/null 2>&1; then
-            echo "Installing Helm..."
-            curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          else
-            echo "Helm already installed: $(helm version --short)"
-          fi
-
-          # Install kubectl if not present
-          if ! command -v kubectl > /dev/null 2>&1; then
-            echo "Installing kubectl..."
-            curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-            sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-          else
-            echo "kubectl already installed: $(kubectl version --client --short)"
-          fi
-
-          # Install Trivy if not present
-          if ! command -v trivy > /dev/null 2>&1; then
-            echo "Installing Trivy..."
-            sudo rpm -ivh https://github.com/aquasecurity/trivy/releases/download/v0.50.1/trivy_0.50.1_Linux-64bit.rpm || true
-          else
-            echo "Trivy already installed: $(trivy --version)"
-          fi
-
-          # Install Terraform if not present
-          if ! command -v terraform > /dev/null 2>&1; then
-            echo "Installing Terraform..."
-            sudo yum install -y yum-utils || true
-            sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo || true
-            sudo yum install -y terraform || true
-          else
-            echo "Terraform already installed: $(terraform version -json | head -1)"
-          fi
-
-          echo "=== Tool Versions ==="
-          helm version --short
-          kubectl version --client --short
-          docker --version
-          aws --version
-        '''
-      }
-    }
-
+ 
     stage('Docker Build') {
       steps {
         sh '''
@@ -87,7 +39,7 @@ pipeline {
         '''
       }
     }
-
+ 
     stage('Trivy Security Scan') {
       steps {
         sh '''
@@ -103,7 +55,7 @@ pipeline {
                          allowEmptyArchive: true
       }
     }
-
+ 
     stage('Push to DockerHub') {
       steps {
         sh '''
@@ -114,18 +66,16 @@ pipeline {
         '''
       }
     }
-
-    stage('Terraform Provision') {
-      steps {
+ 
+   stage('Terraform Provision') {
+    steps {
         dir('terraform') {
-          sh '''
-            terraform init
-            terraform apply -auto-approve
-          '''
+            sh 'terraform init'
+            sh 'terraform apply -auto-approve'
         }
-      }
     }
-
+}
+ 
     stage('Configure kubectl') {
       steps {
         sh '''
@@ -136,31 +86,34 @@ pipeline {
         '''
       }
     }
-
+ 
     stage('Nginx Ingress Controller') {
-      steps {
-        sh '''
-          if kubectl get ns ingress-nginx > /dev/null 2>&1; then
-            echo "Nginx Ingress already installed — skipping"
-          else
-            kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml
-            sleep 30
-            kubectl wait --namespace ingress-nginx \
-              --for=condition=ready pod \
-              --selector=app.kubernetes.io/component=controller \
-              --timeout=180s
-          fi
-          kubectl get svc -n ingress-nginx
-        '''
-      }
-    }
+  steps {
+    sh '''
+      if kubectl get ns ingress-nginx > /dev/null 2>&1; then
+        echo "Nginx Ingress already installed — skipping"
+      else
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml
+        
+        # Wait for pod to be CREATED first
+        sleep 30
+        
+        kubectl wait --namespace ingress-nginx \
+          --for=condition=ready pod \
+          --selector=app.kubernetes.io/component=controller \
+          --timeout=180s
+      fi
+      kubectl get svc -n ingress-nginx
+    '''
+  }
+}
 
-    stage('Namespace + Secrets') {
+     stage('Namespace + Secrets') {
       steps {
         sh '''
           kubectl create namespace ${K8S_NAMESPACE} \
             --dry-run=client -o yaml | kubectl apply -f -
-
+ 
           kubectl create secret generic infragpt-secrets \
             --from-literal=GROQ_API_KEY=${GROQ_API_KEY} \
             --namespace=${K8S_NAMESPACE} \
@@ -168,69 +121,89 @@ pipeline {
         '''
       }
     }
-
+    
+ 
     stage('ELK Stack Deploy') {
-      steps {
-        sh '''
-          kubectl apply -f elk/01-elasticsearch.yaml
-          kubectl apply -f elk/02-logstash.yaml
-          kubectl apply -f elk/03-kibana.yaml
-          kubectl apply -f elk/04-filebeat.yaml
-          echo "ELK Stack applied — Elasticsearch starting in background"
-          sleep 30
-          kubectl get pods -n ${ELK_NAMESPACE}
-        '''
-      }
-    }
+  steps {
+    sh '''
+      kubectl apply -f elk/01-elasticsearch.yaml
+      kubectl apply -f elk/02-logstash.yaml
+      kubectl apply -f elk/03-kibana.yaml
+      kubectl apply -f elk/04-filebeat.yaml
 
+      # Don't wait strictly — ES takes time to start
+      # Let it deploy in background, pipeline continues
+      echo "ELK Stack applied — Elasticsearch starting in background"
+      sleep 30
+      kubectl get pods -n ${ELK_NAMESPACE}
+    '''
+  }
+}
+ 
+ 
     stage('Apply Network Policies') {
       steps {
         sh '''
           echo "Network policies skipped"
-          kubectl get networkpolicies -n ${K8S_NAMESPACE} || true
-          kubectl get networkpolicies -n ${ELK_NAMESPACE} || true
+          kubectl get networkpolicies -n ${K8S_NAMESPACE}
+          kubectl get networkpolicies -n ${ELK_NAMESPACE}
         '''
       }
     }
 
+    stage('Install Helm') {
+  steps {
+    sh '''
+      if ! command -v helm > /dev/null 2>&1; then
+        echo "Installing Helm..."
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      else
+        echo "Helm already installed: $(helm version --short)"
+      fi
+    '''
+  }
+}
+
+    
+ 
     stage('Helm Deploy') {
-      steps {
-        sh '''
-          helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
-            --namespace ${K8S_NAMESPACE} \
-            --set image.repository=${DOCKERHUB_REPO} \
-            --set image.tag=${IMAGE_TAG} \
-            --set filebeat.enabled=true \
-            --set networkPolicy.enabled=true \
-            --set ingress.enabled=true \
-            --atomic \
-            --timeout 5m \
-            --wait
+  steps {
+    sh '''
+      helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
+        --namespace ${K8S_NAMESPACE} \
+        --set image.repository=${DOCKERHUB_REPO} \
+        --set image.tag=${IMAGE_TAG} \
+        --set filebeat.enabled=true \
+        --set networkPolicy.enabled=true \
+        --set ingress.enabled=true \
+        --atomic \
+        --timeout 5m \
+        --wait
 
-          helm status ${HELM_RELEASE} -n ${K8S_NAMESPACE}
-        '''
-      }
-    }
-
+      helm status ${HELM_RELEASE} -n ${K8S_NAMESPACE}
+    '''
+  }
+}
+ 
     stage('Health Check') {
       steps {
         sh '''
           kubectl rollout status deployment/${HELM_RELEASE} \
             -n ${K8S_NAMESPACE} --timeout=120s
-
+ 
           sleep 30
           INGRESS_URL=$(kubectl get ingress infragpt-ingress \
             -n ${K8S_NAMESPACE} \
             -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-
+ 
           echo "Ingress URL: ${INGRESS_URL}"
-
+ 
           if [ -n "${INGRESS_URL}" ]; then
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               http://${INGRESS_URL}/health || echo "000")
             echo "Health check status: ${HTTP_STATUS}"
           fi
-
+ 
           echo "--- Pod Status ---"
           kubectl get pods -n ${K8S_NAMESPACE}
           echo "--- HPA Status ---"
@@ -244,14 +217,14 @@ pipeline {
       }
     }
   }
-
+ 
   post {
     always {
       sh 'docker image prune -f || true'
       sh 'docker logout || true'
     }
     success {
-      echo 'PIPELINE SUCCEEDED — InfraGPT is live!'
+      echo 'PIPELINE SUCCEEDED — InfraGPT Phase 2 is live!'
     }
     failure {
       echo 'PIPELINE FAILED — rolling back Helm release...'
