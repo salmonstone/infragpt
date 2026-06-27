@@ -1,0 +1,90 @@
+pipeline {
+  agent any
+
+  environment {
+    AWS_REGION   = 'ap-south-1'
+    CLUSTER_NAME = 'infragpt-cluster'
+    HELM_RELEASE = 'infragpt'
+    K8S_NAMESPACE  = 'infragpt'
+    ELK_NAMESPACE  = 'logging'
+  }
+
+  options {
+    buildDiscarder(logRotator(numToKeepStr: '5'))
+    timeout(time: 30, unit: 'MINUTES')
+    disableConcurrentBuilds()
+  }
+
+  stages {
+
+    stage('Confirm Destroy') {
+      steps {
+        input message: 'This will DESTROY all infragpt infrastructure. Are you sure?',
+              ok: 'Yes, destroy everything'
+      }
+    }
+
+    stage('Configure kubectl') {
+      steps {
+        sh '''
+          aws eks update-kubeconfig \
+            --region ${AWS_REGION} \
+            --name ${CLUSTER_NAME} || echo "Cluster may already be gone - skipping"
+        '''
+      }
+    }
+
+    stage('Helm Uninstall') {
+      steps {
+        sh '''
+          if command -v helm > /dev/null 2>&1; then
+            helm uninstall ${HELM_RELEASE} -n ${K8S_NAMESPACE} || true
+          else
+            echo "Helm not found - skipping Helm uninstall"
+          fi
+        '''
+      }
+    }
+
+    stage('Delete K8s Resources') {
+      steps {
+        sh '''
+          # Remove ELK stack so PVCs/PVs are released before Terraform destroys EBS volumes
+          kubectl delete -f elk/04-filebeat.yaml  --ignore-not-found=true
+          kubectl delete -f elk/03-kibana.yaml    --ignore-not-found=true
+          kubectl delete -f elk/02-logstash.yaml  --ignore-not-found=true
+          kubectl delete -f elk/01-elasticsearch.yaml --ignore-not-found=true
+
+          # Wait for PVCs to be released so EBS volumes can be deleted cleanly
+          echo "Waiting for PVCs to be removed..."
+          kubectl wait --for=delete pvc \
+            -n ${ELK_NAMESPACE} \
+            --all --timeout=120s || true
+
+          kubectl delete namespace ${K8S_NAMESPACE} --ignore-not-found=true
+          kubectl delete namespace ${ELK_NAMESPACE} --ignore-not-found=true
+        '''
+      }
+    }
+
+    stage('Terraform Destroy') {
+      steps {
+        dir('terraform') {
+          sh '''
+            terraform init
+            terraform destroy -auto-approve
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo 'DESTROY COMPLETE - all infragpt infrastructure has been removed.'
+    }
+    failure {
+      echo 'DESTROY FAILED - check the logs above. Some resources may need manual cleanup.'
+    }
+  }
+}
