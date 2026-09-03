@@ -98,16 +98,30 @@ pipeline {
         echo "Nginx Ingress already installed - skipping"
       else
         kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml
-        
-        # Wait for pod to be CREATED first
+
         sleep 30
-        
+
         kubectl wait --namespace ingress-nginx \
           --for=condition=ready pod \
           --selector=app.kubernetes.io/component=controller \
           --timeout=180s
       fi
       kubectl get svc -n ingress-nginx
+
+      # Install cert-manager for TLS (Let's Encrypt)
+      if kubectl get ns cert-manager > /dev/null 2>&1; then
+        echo "cert-manager already installed - skipping"
+      else
+        kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+        echo "Waiting for cert-manager to be ready..."
+        kubectl wait --namespace cert-manager \
+          --for=condition=ready pod \
+          --selector=app.kubernetes.io/instance=cert-manager \
+          --timeout=120s
+      fi
+
+      # Apply ClusterIssuer for Let's Encrypt
+      kubectl apply -f k8s/cert-manager.yaml
     '''
   }
 }
