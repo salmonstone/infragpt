@@ -62,8 +62,15 @@ metadata:
   namespace: logging
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - kibana.infragpt.online
+      secretName: kibana-tls
   rules:
     - host: kibana.infragpt.online
       http:
