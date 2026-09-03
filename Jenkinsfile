@@ -182,11 +182,6 @@ pipeline {
     stage('Helm Deploy') {
   steps {
     sh '''
-      # Install Helm if not present
-      if ! command -v helm > /dev/null 2>&1; then
-        echo "Installing Helm..."
-        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-      fi
       helm version
 
       helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
