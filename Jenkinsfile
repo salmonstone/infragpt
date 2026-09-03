@@ -75,6 +75,7 @@ pipeline {
     steps {
         dir('terraform') {
             sh 'terraform init'
+            sh 'terraform refresh || true'
             sh 'terraform apply -auto-approve'
         }
     }
