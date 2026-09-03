@@ -43,6 +43,10 @@ pipeline {
     stage('Trivy Security Scan') {
       steps {
         sh '''
+          if ! command -v trivy > /dev/null 2>&1; then
+            echo "Installing Trivy..."
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          fi
           trivy image \
             --exit-code 0 \
             --severity HIGH,CRITICAL \
@@ -91,7 +95,7 @@ pipeline {
   steps {
     sh '''
       if kubectl get ns ingress-nginx > /dev/null 2>&1; then
-        echo "Nginx Ingress already installed — skipping"
+        echo "Nginx Ingress already installed - skipping"
       else
         kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/aws/deploy.yaml
         
@@ -126,15 +130,39 @@ pipeline {
     stage('ELK Stack Deploy') {
   steps {
     sh '''
+      # Ensure infragpt namespace exists before applying filebeat (which has resources there)
+      kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
       kubectl apply -f elk/01-elasticsearch.yaml
+
+      # Wait for the Elasticsearch PVC to bind (EBS volume provisioning can take 2-4 min)
+      echo "Waiting for Elasticsearch PVC to bind..."
+      for i in $(seq 1 24); do
+        PVC_STATUS=$(kubectl get pvc -n ${ELK_NAMESPACE} -l app=elasticsearch \
+          -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "NotFound")
+        echo "PVC status: ${PVC_STATUS} (attempt ${i}/24)"
+        if [ "${PVC_STATUS}" = "Bound" ]; then
+          echo "PVC bound successfully"
+          break
+        fi
+        sleep 10
+      done
+
+      # Wait for Elasticsearch pod to be ready (handles EBS attach + JVM startup)
+      echo "Waiting for Elasticsearch to be ready..."
+      kubectl rollout status statefulset/elasticsearch \
+        -n ${ELK_NAMESPACE} --timeout=300s
+
       kubectl apply -f elk/02-logstash.yaml
       kubectl apply -f elk/03-kibana.yaml
       kubectl apply -f elk/04-filebeat.yaml
 
-      # Don't wait strictly — ES takes time to start
-      # Let it deploy in background, pipeline continues
-      echo "ELK Stack applied — Elasticsearch starting in background"
-      sleep 30
+      # Wait for Logstash to be ready before Helm deploys the app with filebeat sidecar
+      echo "Waiting for Logstash to be ready..."
+      kubectl rollout status deployment/logstash \
+        -n ${ELK_NAMESPACE} --timeout=180s
+
+      echo "ELK Stack deployed successfully"
       kubectl get pods -n ${ELK_NAMESPACE}
     '''
   }
@@ -150,25 +178,17 @@ pipeline {
         '''
       }
     }
-
-    stage('Install Helm') {
-  steps {
-    sh '''
-      if ! command -v helm > /dev/null 2>&1; then
-        echo "Installing Helm..."
-        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-      else
-        echo "Helm already installed: $(helm version --short)"
-      fi
-    '''
-  }
-}
-
-    
  
     stage('Helm Deploy') {
   steps {
     sh '''
+      # Install Helm if not present
+      if ! command -v helm > /dev/null 2>&1; then
+        echo "Installing Helm..."
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      fi
+      helm version
+
       helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
         --namespace ${K8S_NAMESPACE} \
         --set image.repository=${DOCKERHUB_REPO} \
@@ -224,10 +244,10 @@ pipeline {
       sh 'docker logout || true'
     }
     success {
-      echo 'PIPELINE SUCCEEDED — InfraGPT Phase 2 is live!'
+      echo 'PIPELINE SUCCEEDED - InfraGPT Phase 2 is live!'
     }
     failure {
-      echo 'PIPELINE FAILED — rolling back Helm release...'
+      echo 'PIPELINE FAILED - rolling back Helm release...'
       sh 'helm rollback ${HELM_RELEASE} 0 -n ${K8S_NAMESPACE} || true'
     }
   }
