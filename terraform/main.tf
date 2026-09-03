@@ -44,6 +44,8 @@ module "eks" {
   cluster_version                = "1.30"
   cluster_endpoint_public_access = true
   create_cloudwatch_log_group    = false
+  create_kms_key                 = false
+  cluster_encryption_config      = {}
   vpc_id                         = module.vpc.vpc_id
   subnet_ids                     = module.vpc.private_subnets
 
