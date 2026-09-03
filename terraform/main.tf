@@ -46,6 +46,7 @@ module "eks" {
   create_cloudwatch_log_group    = false
   create_kms_key                 = false
   cluster_encryption_config      = {}
+  bootstrap_self_managed_addons  = false
   vpc_id                         = module.vpc.vpc_id
   subnet_ids                     = module.vpc.private_subnets
 
