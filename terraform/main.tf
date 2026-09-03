@@ -41,7 +41,7 @@ module "eks" {
   source                         = "terraform-aws-modules/eks/aws"
   version                        = "19.21.0"
   cluster_name                   = "${var.project_name}-cluster"
-  cluster_version                = "1.29"
+  cluster_version                = "1.30"
   cluster_endpoint_public_access = true
   create_cloudwatch_log_group    = false
   create_kms_key                 = false
@@ -66,6 +66,7 @@ module "eks" {
   eks_managed_node_groups = {
     infragpt_nodes = {
       instance_types = ["t3.medium"]
+      ami_type       = "AL2_x86_64"
       min_size       = 1
       max_size       = 3
       desired_size   = 2
