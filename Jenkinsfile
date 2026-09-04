@@ -2,6 +2,7 @@ pipeline {
   agent any
  
   environment {
+    PATH = "/usr/local/bin:/usr/bin:/bin:${env.PATH}"
     DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
     DOCKERHUB_REPO        = 'salmonstone/infragpt'
     IMAGE_TAG             = "${BUILD_NUMBER}"
