@@ -31,7 +31,7 @@ def chat():
             return jsonify({'error': 'Empty message'}), 400
         logger.info(f'[{datetime.now()}] Q: {msg[:60]}')
         response = client.chat.completions.create(
-            model='llama-3.3-70b-versatile',
+            model='llama3-70b-8192',
             messages=[
                 {'role': 'system', 'content': SYSTEM_PROMPT},
                 {'role': 'user',   'content': msg}
