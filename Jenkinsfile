@@ -198,6 +198,9 @@ pipeline {
     stage('Helm Deploy') {
   steps {
     sh '''
+      # Clean up orphaned ingress left from previous failed installs
+      kubectl delete ingress infragpt-ingress -n ${K8S_NAMESPACE} --ignore-not-found=true
+
       helm version
 
       helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
