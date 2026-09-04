@@ -210,6 +210,7 @@ pipeline {
         --set filebeat.enabled=true \
         --set networkPolicy.enabled=true \
         --set ingress.enabled=true \
+        --force \
         --atomic \
         --timeout 5m \
         --wait
