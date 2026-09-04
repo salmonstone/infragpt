@@ -1,8 +1,8 @@
 replicaCount: 2
 image:
   repository: salmonstone/infragpt
-  pullPolicy: IfNotPresent
-  tag: "latest"
+  pullPolicy: Always
+  tag: "v1"
 namespace: infragpt
 secret:
   name: infragpt-secrets
