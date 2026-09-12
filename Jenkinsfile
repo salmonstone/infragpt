@@ -195,13 +195,17 @@ pipeline {
       }
     }
  
-    stage('Helm Deploy') {
+   stage('Helm Deploy') {
   steps {
     sh '''
-      # Install Helm if not present
+      # Install Helm if not present (no sudo — write to workspace-local bin)
       if ! command -v helm > /dev/null 2>&1; then
         echo "Installing Helm..."
-        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | VERIFY_CHECKSUM=false bash
+        mkdir -p "${WORKSPACE}/bin"
+        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        chmod +x get_helm.sh
+        USE_SUDO=false HELM_INSTALL_DIR="${WORKSPACE}/bin" VERIFY_CHECKSUM=false ./get_helm.sh
+        rm -f get_helm.sh
       fi
 
       # Clean up orphaned ingress left from previous failed installs
