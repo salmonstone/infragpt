@@ -198,6 +198,12 @@ pipeline {
     stage('Helm Deploy') {
   steps {
     sh '''
+      # Install Helm if not present
+      if ! command -v helm > /dev/null 2>&1; then
+        echo "Installing Helm..."
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | VERIFY_CHECKSUM=false bash
+      fi
+
       # Clean up orphaned ingress left from previous failed installs
       kubectl delete ingress infragpt-ingress -n ${K8S_NAMESPACE} --ignore-not-found=true
 
