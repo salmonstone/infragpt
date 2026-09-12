@@ -2,6 +2,7 @@ pipeline {
   agent any
  
   environment {
+    PATH = "/usr/local/bin:/usr/bin:/bin:${env.PATH}"
     DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
     DOCKERHUB_REPO        = 'salmonstone/infragpt'
     IMAGE_TAG             = "${BUILD_NUMBER}"
@@ -75,6 +76,7 @@ pipeline {
     steps {
         dir('terraform') {
             sh 'terraform init'
+            sh 'terraform refresh || true'
             sh 'terraform apply -auto-approve'
         }
     }
@@ -196,6 +198,15 @@ pipeline {
     stage('Helm Deploy') {
   steps {
     sh '''
+      # Install Helm if not present
+      if ! command -v helm > /dev/null 2>&1; then
+        echo "Installing Helm..."
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | VERIFY_CHECKSUM=false bash
+      fi
+
+      # Clean up orphaned ingress left from previous failed installs
+      kubectl delete ingress infragpt-ingress -n ${K8S_NAMESPACE} --ignore-not-found=true
+
       helm version
 
       helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
@@ -205,6 +216,7 @@ pipeline {
         --set filebeat.enabled=true \
         --set networkPolicy.enabled=true \
         --set ingress.enabled=true \
+        --force \
         --atomic \
         --timeout 5m \
         --wait
