@@ -195,10 +195,11 @@ pipeline {
       }
     }
  
-   stage('Helm Deploy') {
+  stage('Helm Deploy') {
   steps {
     sh '''
-      # Install Helm if not present (no sudo — write to workspace-local bin)
+      export PATH="${WORKSPACE}/bin:$PATH"
+
       if ! command -v helm > /dev/null 2>&1; then
         echo "Installing Helm..."
         mkdir -p "${WORKSPACE}/bin"
@@ -208,11 +209,9 @@ pipeline {
         rm -f get_helm.sh
       fi
 
-      # Clean up orphaned ingress left from previous failed installs
       kubectl delete ingress infragpt-ingress -n ${K8S_NAMESPACE} --ignore-not-found=true
 
       helm version
-
       helm upgrade --install ${HELM_RELEASE} ./helm/infragpt \
         --namespace ${K8S_NAMESPACE} \
         --set image.repository=${DOCKERHUB_REPO} \
