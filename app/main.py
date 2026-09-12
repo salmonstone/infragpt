@@ -31,7 +31,7 @@ def chat():
             return jsonify({'error': 'Empty message'}), 400
         logger.info(f'[{datetime.now()}] Q: {msg[:60]}')
         response = client.chat.completions.create(
-            model='openai/gpt-oss-120b',
+            model='groq/compound',
             messages=[
                 {'role': 'system', 'content': SYSTEM_PROMPT},
                 {'role': 'user',   'content': msg}

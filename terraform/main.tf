@@ -5,7 +5,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "infragpt-tfstate-ap-south-1"
+    bucket         = "infragpt-tfstate-ap-south-2"
     key            = "infragpt/terraform.tfstate"
     region         = "ap-south-1"
     encrypt        = true
