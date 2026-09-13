@@ -16,7 +16,7 @@ ingress:
   className: nginx
   host: www.infragpt.online
   tls:
-    enabled: false
+    enabled: true
 resources:
   app:
     requests:
