@@ -1,3 +1,4 @@
+from __future__ import annotations
 import time
 from groq import Groq
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -23,14 +24,16 @@ client = Groq(api_key=settings.groq_api_key)
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
-def _call_llm(model: str, question: str) -> dict:
+def _call_llm(model: str, question: str, history: list[dict] | None = None) -> dict:
     start = time.time()
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": question})
+
     response = client.chat.completions.create(
         model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": question},
-        ],
+        messages=messages,
         max_tokens=1024,
         temperature=0.7,
         timeout=30,
@@ -44,11 +47,14 @@ def _call_llm(model: str, question: str) -> dict:
     }
 
 
-def ask_llm(question: str) -> dict:
+def ask_llm(question: str, history: list[dict] | None = None) -> dict:
+    """history: prior turns as [{"role": "user"|"assistant", "content": ...}, ...],
+    oldest first — lets the model answer follow-ups ("explain that more") instead
+    of treating every message as a standalone question."""
     last_error = None
     for model in MODELS:
         try:
-            return _call_llm(model, question)
+            return _call_llm(model, question, history)
         except Exception as e:
             last_error = e
             continue

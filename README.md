@@ -22,11 +22,19 @@ Two diagrams are included in the repo root:
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | POST | `/auth/login` | No | Get JWT token |
+| POST | `/auth/register` | No | Self-service signup — always creates role `user`; role can't be set by the client |
 | POST | `/chat` | JWT | Ask a DevOps question |
 | GET | `/health` | No | Health check |
 | GET | `/metrics` | No | Prometheus metrics |
-| GET | `/history` | JWT | Chat history |
+| GET | `/history` | JWT | **Your own** chat history — always, including for admins |
+| GET | `/admin/users` | JWT (admin) | List all registered users |
+| GET | `/admin/users/{username}/history` | JWT (admin) | View one specific user's chat history |
+| PATCH | `/admin/users/{username}/role` | JWT (admin) | Change a user's role (blocks demoting the last admin) |
 | GET | `/` | No | Web UI |
+
+Chat isolation is enforced server-side by filtering every query on the JWT's own username — never by anything the client sends. Admin seeing "everyone's chats by default" isn't a thing here on purpose: `/history` is deliberately just-yours-always, and cross-user visibility only exists as the separate, explicit `/admin/users/{username}/history` action.
+
+`/chat` layers three lookups before generating anything new: Redis cache (5 min, fastest) → an exact-match lookup in Postgres (durable, reuses a previously-generated answer for the same question with zero new AI call) → only then a fresh Groq call, which is given the user's last 3 turns as conversation history so follow-ups ("explain that more") work instead of every message being treated as standalone.
 
 ## Authentication & Authorization
 
@@ -36,13 +44,15 @@ JWT is implemented by hand in [`app/auth.py`](app/auth.py): HS256, signed with a
 
 ### Roles (RBAC)
 
-| Role | `/chat` | `/history` | `/metrics` | Intent |
-|---|---|---|---|---|
-| `admin` | ✅ All users' history | ✅ | ✅ | Manage the platform: full visibility into usage, cost (tokens), and everyone's history |
-| `user` | ✅ Own history only | ✅ (own rows) | ✅ | The normal product user — can ask questions, cannot see other users' data |
-| `readonly` | ❌ Blocked | ✅ | ✅ | Auditors / support staff — can inspect reports and metrics, cannot spend LLM budget |
+| Role | `/chat` | `/history` | `/admin/users*` | `/metrics` | Intent |
+|---|---|---|---|---|---|
+| `admin` | ✅ Own history only | ✅ Own rows only | ✅ View any user's history, change roles | ✅ | Manage the platform — user administration and full metrics visibility, but no standing access to everyone's conversations |
+| `user` | ✅ Own history only | ✅ (own rows) | ❌ | ✅ | The normal product user — can ask questions, cannot see other users' data |
+| `readonly` | ❌ Blocked | ✅ | ❌ | ✅ | Auditors / support staff — can inspect reports and metrics, cannot spend LLM budget |
 
-`readonly` exists specifically to separate *"can see data"* from *"can spend money calling the LLM"* — a common real-world split (e.g., a support engineer debugging a user's chat history shouldn't also be able to run up the Groq bill). Enforcement today is a single dependency per route; at this scale that's the right amount of complexity — a full policy engine (OPA/Cedar) would be over-engineering for 3 roles and 3 protected routes, but is the natural next step if roles/resources multiply (see below).
+`readonly` exists specifically to separate *"can see data"* from *"can spend money calling the LLM"* — a common real-world split (e.g., a support engineer debugging a user's chat history shouldn't also be able to run up the Groq bill). Enforcement today is a single dependency per route (`require_role(...)`); at this scale that's the right amount of complexity — a full policy engine (OPA/Cedar) would be over-engineering for 3 roles and this route count, but is the natural next step if roles/resources multiply (see below).
+
+Note `admin`'s `/history` is *own rows only*, same as everyone else — being an admin doesn't grant standing visibility into other users' conversations just by existing. Seeing someone else's history is a distinct, explicit, logged action (`GET /admin/users/{username}/history`), not a side effect of the role.
 
 ### Extending to production SSO / OIDC
 

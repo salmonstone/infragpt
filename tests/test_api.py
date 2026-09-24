@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
+from datetime import datetime
 import sys, os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
@@ -123,3 +124,137 @@ def test_chat_readonly_role_blocked(client):
         assert "Read-only" in r.json()["detail"]
     finally:
         _clear_overrides(get_current_user)
+
+
+# ---------- registration ----------
+
+def test_register_success(client):
+    mock_session = MagicMock()
+    mock_session.query.return_value.filter.return_value.first.return_value = None  # username free
+    _override_db(mock_session)
+    try:
+        r = client.post("/auth/register", json={"username": "alice", "password": "alicepass123"})
+        assert r.status_code == 201
+        body = r.json()
+        assert body["role"] == "user"  # role is never client-settable, always "user"
+        assert "access_token" in body
+    finally:
+        _clear_overrides(get_db)
+
+
+def test_register_duplicate_username(client):
+    mock_session = MagicMock()
+    mock_session.query.return_value.filter.return_value.first.return_value = User(username="alice", role="user")
+    _override_db(mock_session)
+    try:
+        r = client.post("/auth/register", json={"username": "alice", "password": "alicepass123"})
+        assert r.status_code == 409
+    finally:
+        _clear_overrides(get_db)
+
+
+def test_register_weak_password_rejected(client):
+    r = client.post("/auth/register", json={"username": "bob", "password": "ab"})
+    assert r.status_code == 422  # min_length=6, no DB hit needed
+
+
+# ---------- admin: users ----------
+
+def test_admin_list_users_forbidden_for_non_admin(client):
+    _override_user(User(username="alice", role="user"))
+    try:
+        r = client.get("/admin/users", headers={"Authorization": "Bearer fake"})
+        assert r.status_code == 403
+    finally:
+        _clear_overrides(get_current_user)
+
+
+def test_admin_list_users_success(client):
+    _override_user(User(username="admin", role="admin"))
+    mock_session = MagicMock()
+    mock_session.query.return_value.order_by.return_value.all.return_value = [
+        User(username="admin", role="admin", created_at=datetime(2026, 1, 1)),
+        User(username="alice", role="user", created_at=datetime(2026, 1, 2)),
+    ]
+    _override_db(mock_session)
+    try:
+        r = client.get("/admin/users", headers={"Authorization": "Bearer fake"})
+        assert r.status_code == 200
+        usernames = [u["username"] for u in r.json()]
+        assert usernames == ["admin", "alice"]
+    finally:
+        _clear_overrides(get_current_user, get_db)
+
+
+def test_admin_user_history_not_found(client):
+    _override_user(User(username="admin", role="admin"))
+    mock_session = MagicMock()
+    mock_session.query.return_value.filter.return_value.first.return_value = None  # no such user
+    _override_db(mock_session)
+    try:
+        r = client.get("/admin/users/ghost/history", headers={"Authorization": "Bearer fake"})
+        assert r.status_code == 404
+    finally:
+        _clear_overrides(get_current_user, get_db)
+
+
+def test_history_requires_auth(client):
+    r = client.get("/history")
+    assert r.status_code == 403  # no bearer token
+
+
+# ---------- admin: role management ----------
+
+def test_role_update_forbidden_for_non_admin(client):
+    _override_user(User(username="alice", role="user"))
+    try:
+        r = client.patch(
+            "/admin/users/alice/role",
+            json={"role": "admin"},
+            headers={"Authorization": "Bearer fake"},
+        )
+        assert r.status_code == 403
+    finally:
+        _clear_overrides(get_current_user)
+
+
+def test_role_update_invalid_role_rejected(client):
+    _override_user(User(username="admin", role="admin"))
+    try:
+        r = client.patch(
+            "/admin/users/alice/role",
+            json={"role": "superuser"},
+            headers={"Authorization": "Bearer fake"},
+        )
+        assert r.status_code == 422  # doesn't match the admin|user|readonly pattern
+    finally:
+        _clear_overrides(get_current_user)
+
+
+def test_role_update_cannot_demote_last_admin(client):
+    _override_user(User(username="admin", role="admin"))
+    mock_session = MagicMock()
+    mock_session.query.return_value.filter.return_value.first.return_value = User(username="admin", role="admin")
+    mock_session.query.return_value.filter.return_value.count.return_value = 0  # no other admins left
+    _override_db(mock_session)
+    try:
+        r = client.patch(
+            "/admin/users/admin/role",
+            json={"role": "user"},
+            headers={"Authorization": "Bearer fake"},
+        )
+        assert r.status_code == 400
+        assert "last remaining admin" in r.json()["detail"]
+    finally:
+        _clear_overrides(get_current_user, get_db)
+
+# Note: the /chat DB-first-lookup and conversation-context logic (skip the AI
+# for an exact repeat question; pass recent turns as context otherwise) is
+# deliberately not unit-tested here with mocks — db.query(ChatHistory) is
+# called twice per request with different filters, and a generic MagicMock
+# can't distinguish those calls without fragile, over-specified setup that
+# would mostly test the mock rather than the logic. That logic was instead
+# verified against a real SQLite DB and a real Groq call: an exact-repeat
+# question returned the saved answer with zero additional LLM calls, and a
+# context-dependent follow-up ("what's my favorite AWS service?") answered
+# correctly using an earlier message — see project history for the transcript.

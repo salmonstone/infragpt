@@ -75,19 +75,36 @@ textarea::placeholder{color:var(--mu);}
     <div><div class='logo'>InfraGPT</div><div class='sub'>AI-Powered DevOps Assistant</div></div>
   </div>
   <div style='display:flex;align-items:center;gap:10px;'>
+    <button id='usersBtn' onclick='openUsersPanel()' style='display:none;background:transparent;border:1px solid var(--bdr);color:var(--mu);padding:4px 10px;border-radius:20px;font-size:.72rem;font-family:"JetBrains Mono",monospace;cursor:pointer;'>👥 users</button>
     <div class='pill' id='userPill' style='display:none;'><div class='dot'></div><span id='userLabel'></span></div>
     <button id='logoutBtn' onclick='logout()' style='display:none;background:transparent;border:1px solid var(--bdr);color:var(--mu);padding:4px 10px;border-radius:20px;font-size:.72rem;font-family:"JetBrains Mono",monospace;cursor:pointer;'>logout</button>
   </div>
 </div>
 <div id='loginOverlay' style='position:fixed;inset:0;background:rgba(13,17,23,.92);display:flex;align-items:center;justify-content:center;z-index:50;'>
-  <form id='loginForm' onsubmit='doLogin(event)' style='background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:28px;width:280px;display:flex;flex-direction:column;gap:12px;'>
+  <form id='loginForm' onsubmit='doAuth(event)' style='background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:28px;width:280px;display:flex;flex-direction:column;gap:12px;'>
     <div class='logo' style='text-align:center;'>InfraGPT</div>
-    <div class='sub' style='text-align:center;margin-bottom:8px;'>Sign in to chat</div>
+    <div class='sub' id='authModeLabel' style='text-align:center;margin-bottom:8px;'>Sign in to chat</div>
     <input id='loginUser' placeholder='username' autocomplete='username' style='background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;color:var(--tx);font-family:"JetBrains Mono",monospace;font-size:.85rem;outline:none;'/>
     <input id='loginPass' type='password' placeholder='password' autocomplete='current-password' style='background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;color:var(--tx);font-family:"JetBrains Mono",monospace;font-size:.85rem;outline:none;'/>
-    <button type='submit' class='sbtn' style='width:100%;border-radius:8px;'>Sign in</button>
+    <button type='submit' class='sbtn' id='authSubmitBtn' style='width:100%;border-radius:8px;'>Sign in</button>
     <div id='loginErr' style='color:#f87171;font-size:.72rem;text-align:center;min-height:14px;'></div>
+    <div style='text-align:center;font-size:.72rem;color:var(--mu);'>
+      <span id='authToggleText'>New here?</span>
+      <a href='#' id='authToggleLink' onclick='toggleAuthMode(event)' style='color:var(--acc);text-decoration:none;'>Create an account</a>
+    </div>
   </form>
+</div>
+<div id='usersOverlay' style='display:none;position:fixed;inset:0;background:rgba(13,17,23,.92);align-items:center;justify-content:center;z-index:50;'>
+  <div style='background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:24px;width:min(640px,92vw);max-height:80vh;display:flex;flex-direction:column;gap:14px;'>
+    <div style='display:flex;align-items:center;justify-content:space-between;'>
+      <div class='logo' style='font-size:1.05rem;'>Admin — Users</div>
+      <button onclick='closeUsersPanel()' style='background:transparent;border:1px solid var(--bdr);color:var(--mu);border-radius:8px;padding:4px 10px;cursor:pointer;font-family:"JetBrains Mono",monospace;'>close ✕</button>
+    </div>
+    <div style='display:flex;gap:14px;overflow:hidden;flex:1;'>
+      <div id='usersList' style='width:220px;flex-shrink:0;overflow-y:auto;display:flex;flex-direction:column;gap:6px;'></div>
+      <div id='userHistoryPane' style='flex:1;overflow-y:auto;border-left:1px solid var(--bdr);padding-left:14px;font-size:.8rem;color:var(--mu);'>Select a user to view their chat history.</div>
+    </div>
+  </div>
 </div>
 <div class='qbar'>
   <button class='qp' onclick="qa('How do I create an EKS cluster with Terraform?')">🏗️ EKS+Terraform</button>
@@ -134,41 +151,75 @@ const loginErr=document.getElementById('loginErr');
 const userPill=document.getElementById('userPill');
 const userLabel=document.getElementById('userLabel');
 const logoutBtn=document.getElementById('logoutBtn');
+const usersBtn=document.getElementById('usersBtn');
+const usersOverlay=document.getElementById('usersOverlay');
+const usersList=document.getElementById('usersList');
+const userHistoryPane=document.getElementById('userHistoryPane');
+let authMode='login'; // or 'register'
 
 // Demo-grade token storage: localStorage keeps you signed in across page
 // reloads, which is what you want when recording a demo. It's readable by
 // any script on the page (XSS risk), so a real production UI would use an
 // httpOnly cookie set by the server instead — see README's SSO/OIDC section.
 function getToken(){return localStorage.getItem('infragpt_token');}
+function getRole(){return localStorage.getItem('infragpt_role');}
 function setSession(token,username,role){
   localStorage.setItem('infragpt_token',token);
   localStorage.setItem('infragpt_user',username);
+  localStorage.setItem('infragpt_role',role);
+  applySessionUI(username,role);
+}
+function applySessionUI(username,role){
   userLabel.textContent=username+' ('+role+')';
   userPill.style.display='flex';
   logoutBtn.style.display='block';
+  usersBtn.style.display=(role==='admin')?'block':'none';
   loginOverlay.style.display='none';
 }
 function logout(){
   localStorage.removeItem('infragpt_token');
   localStorage.removeItem('infragpt_user');
+  localStorage.removeItem('infragpt_role');
   userPill.style.display='none';
   logoutBtn.style.display='none';
+  usersBtn.style.display='none';
   loginOverlay.style.display='flex';
 }
-async function doLogin(e){
+function toggleAuthMode(e){
+  e.preventDefault();
+  authMode=(authMode==='login')?'register':'login';
+  document.getElementById('authModeLabel').textContent=(authMode==='login')?'Sign in to chat':'Create your account';
+  document.getElementById('authSubmitBtn').textContent=(authMode==='login')?'Sign in':'Create account';
+  document.getElementById('authToggleText').textContent=(authMode==='login')?'New here?':'Already have an account?';
+  document.getElementById('authToggleLink').textContent=(authMode==='login')?'Create an account':'Sign in';
+  loginErr.textContent='';
+}
+async function doAuth(e){
   e.preventDefault();
   loginErr.textContent='';
   const u=document.getElementById('loginUser').value.trim();
   const p=document.getElementById('loginPass').value;
   if(!u||!p){loginErr.textContent='enter both fields';return;}
   try{
-    const r=await fetch('/auth/login',{
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:'username='+encodeURIComponent(u)+'&password='+encodeURIComponent(p)
-    });
+    let r;
+    if(authMode==='login'){
+      r=await fetch('/auth/login',{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'username='+encodeURIComponent(u)+'&password='+encodeURIComponent(p)
+      });
+    } else {
+      r=await fetch('/auth/register',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({username:u,password:p})
+      });
+    }
     const d=await r.json();
-    if(!r.ok){loginErr.textContent=d.detail||'login failed';return;}
+    if(!r.ok){
+      loginErr.textContent=Array.isArray(d.detail)?d.detail[0].msg:(d.detail||'failed');
+      return;
+    }
     setSession(d.access_token,u,d.role);
   }catch(err){
     loginErr.textContent='connection error';
@@ -176,10 +227,74 @@ async function doLogin(e){
 }
 // Restore session on load if we already have a token (skip re-login on refresh).
 if(getToken()){
-  userLabel.textContent=(localStorage.getItem('infragpt_user')||'signed in');
-  userPill.style.display='flex';
-  logoutBtn.style.display='block';
-  loginOverlay.style.display='none';
+  applySessionUI(localStorage.getItem('infragpt_user')||'signed in',getRole()||'user');
+}
+
+// ---- Admin: Users panel ----
+function openUsersPanel(){
+  usersOverlay.style.display='flex';
+  loadUsers();
+}
+function closeUsersPanel(){
+  usersOverlay.style.display='none';
+}
+async function loadUsers(){
+  usersList.innerHTML='<div style="color:var(--mu);font-size:.75rem;">loading…</div>';
+  try{
+    const r=await fetch('/admin/users',{headers:{'Authorization':'Bearer '+getToken()}});
+    if(!r.ok){usersList.innerHTML='<div style="color:#f87171;font-size:.75rem;">failed to load</div>';return;}
+    const users=await r.json();
+    usersList.innerHTML='';
+    users.forEach(u=>{
+      const row=document.createElement('div');
+      row.style.cssText='background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px;cursor:pointer;font-size:.78rem;';
+      row.innerHTML='<div style="color:var(--tx);">'+u.username+'</div>'+
+        '<div style="color:var(--mu);font-size:.68rem;display:flex;align-items:center;justify-content:space-between;margin-top:3px;">'+
+        '<span>'+u.role+'</span>'+
+        '<select data-user="'+u.username+'" onclick="event.stopPropagation()" onchange="changeRole(this)" style="background:var(--sur);color:var(--tx);border:1px solid var(--bdr);border-radius:4px;font-size:.68rem;font-family:\'JetBrains Mono\',monospace;">'+
+        ['admin','user','readonly'].map(r=>'<option value="'+r+'"'+(r===u.role?' selected':'')+'>'+r+'</option>').join('')+
+        '</select></div>';
+      row.onclick=()=>selectUser(u.username);
+      usersList.appendChild(row);
+    });
+  }catch(err){
+    usersList.innerHTML='<div style="color:#f87171;font-size:.75rem;">connection error</div>';
+  }
+}
+async function selectUser(username){
+  userHistoryPane.innerHTML='<div>loading '+username+'\'s history…</div>';
+  try{
+    const r=await fetch('/admin/users/'+encodeURIComponent(username)+'/history',{headers:{'Authorization':'Bearer '+getToken()}});
+    const rows=await r.json();
+    if(!r.ok){userHistoryPane.innerHTML='<div style="color:#f87171;">'+(rows.detail||'failed to load')+'</div>';return;}
+    if(!rows.length){userHistoryPane.innerHTML='<div>'+username+' has no chat history yet.</div>';return;}
+    userHistoryPane.innerHTML='';
+    rows.forEach(row=>{
+      const el=document.createElement('div');
+      el.style.cssText='border-bottom:1px solid var(--bdr);padding:8px 0;';
+      el.innerHTML='<div style="color:var(--acc);font-size:.75rem;">Q: '+row.question.replace(/</g,'&lt;')+'</div>'+
+        '<div style="color:var(--tx);font-size:.75rem;margin-top:3px;">A: '+row.answer.replace(/</g,'&lt;')+'</div>'+
+        '<div style="color:var(--mu);font-size:.65rem;margin-top:3px;">'+row.at+' · '+row.tokens+' tokens</div>';
+      userHistoryPane.appendChild(el);
+    });
+  }catch(err){
+    userHistoryPane.innerHTML='<div style="color:#f87171;">connection error</div>';
+  }
+}
+async function changeRole(sel){
+  const username=sel.getAttribute('data-user');
+  const newRole=sel.value;
+  try{
+    const r=await fetch('/admin/users/'+encodeURIComponent(username)+'/role',{
+      method:'PATCH',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
+      body:JSON.stringify({role:newRole})
+    });
+    const d=await r.json();
+    if(!r.ok){alert(d.detail||'failed to update role');loadUsers();return;}
+  }catch(err){
+    alert('connection error');
+  }
 }
 function rs(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px';}
 function hk(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
