@@ -3,6 +3,7 @@ import hashlib
 import base64
 import json
 import time
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -13,11 +14,15 @@ bearer_scheme = HTTPBearer()
 
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return hmac.compare_digest(hashlib.sha256(plain.encode()).hexdigest(), hashed)
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except ValueError:
+        # Handles rows created before the bcrypt migration (legacy sha256 hex digest)
+        return hmac.compare_digest(hashlib.sha256(plain.encode()).hexdigest(), hashed)
 
 
 def _b64url(data: bytes) -> str:

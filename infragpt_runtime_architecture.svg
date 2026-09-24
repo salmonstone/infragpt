@@ -1,0 +1,126 @@
+<svg width="100%" viewBox="0 0 760 1180" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<style>
+  .box{stroke-width:0.5px;rx:8px}
+  .t{font-family:"Anthropic Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-anchor:middle;dominant-baseline:central}
+  .title{font-size:14px;font-weight:500}
+  .sub{font-size:11.5px;font-weight:400}
+  .lbl{font-family:"Anthropic Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:11.5px;fill:rgb(194,192,182)}
+  .arr{stroke:rgb(156,154,146);stroke-width:1.5px;fill:none}
+</style>
+
+<!-- Users -->
+<rect x="300" y="16" width="160" height="50" rx="8" class="box" style="fill:rgb(68,68,65);stroke:rgb(180,178,169)"/>
+<text x="380" y="35" class="t title" style="fill:rgb(211,209,199)">Users</text>
+<text x="380" y="52" class="t sub" style="fill:rgb(180,178,169)">web UI / curl / API clients</text>
+
+<line x1="380" y1="66" x2="380" y2="100" class="arr" marker-end="url(#arrow2)"/>
+<text x="392" y="86" class="lbl">HTTPS :443</text>
+
+<!-- Load Balancer / Ingress -->
+<rect x="260" y="100" width="240" height="50" rx="8" class="box" style="fill:rgb(60,52,137);stroke:rgb(175,169,236)"/>
+<text x="380" y="119" class="t title" style="fill:rgb(206,203,246)">Nginx Ingress (Load Balancer)</text>
+<text x="380" y="136" class="t sub" style="fill:rgb(175,169,236)">TLS term. · path routing · health checks</text>
+
+<line x1="380" y1="150" x2="380" y2="184" class="arr" marker-end="url(#arrow2)"/>
+<text x="392" y="170" class="lbl">/health readiness probe</text>
+
+<!-- FastAPI pods group -->
+<rect x="40" y="184" width="680" height="118" rx="12" class="box" style="fill:rgb(12,68,124);stroke:rgb(133,183,235)"/>
+<text x="380" y="206" class="t title" style="fill:rgb(181,212,244)">FastAPI Pods — HPA 2 → 6 (60% CPU / 70% mem)</text>
+
+<rect x="66" y="222" width="140" height="60" rx="6" class="box" style="fill:rgb(8,80,65);stroke:rgb(93,202,165)"/>
+<text x="136" y="242" class="t title" style="fill:rgb(159,225,203)">Pod 1</text>
+<text x="136" y="259" class="t sub" style="fill:rgb(93,202,165)">uvicorn · 2 workers</text>
+
+<rect x="230" y="222" width="140" height="60" rx="6" class="box" style="fill:rgb(8,80,65);stroke:rgb(93,202,165)"/>
+<text x="300" y="242" class="t title" style="fill:rgb(159,225,203)">Pod 2</text>
+<text x="300" y="259" class="t sub" style="fill:rgb(93,202,165)">uvicorn · 2 workers</text>
+
+<rect x="394" y="222" width="140" height="60" rx="6" class="box" style="fill:rgb(8,80,65);stroke:rgb(93,202,165)"/>
+<text x="464" y="242" class="t title" style="fill:rgb(159,225,203)">Pod 3</text>
+<text x="464" y="259" class="t sub" style="fill:rgb(93,202,165)">uvicorn · 2 workers</text>
+
+<rect x="558" y="222" width="140" height="60" rx="6" class="box" style="fill:rgb(46,46,44);stroke:rgb(156,154,146);stroke-dasharray:4 3"/>
+<text x="628" y="242" class="t title" style="fill:rgb(194,192,182)">... up to 6</text>
+<text x="628" y="259" class="t sub" style="fill:rgb(156,154,146)">scaled by HPA</text>
+
+<line x1="380" y1="302" x2="200" y2="344" class="arr" marker-end="url(#arrow2)"/>
+<line x1="380" y1="302" x2="380" y2="344" class="arr" marker-end="url(#arrow2)"/>
+<line x1="380" y1="302" x2="560" y2="344" class="arr" marker-end="url(#arrow2)"/>
+
+<!-- Redis -->
+<rect x="70" y="344" width="260" height="66" rx="8" class="box" style="fill:rgb(99,56,6);stroke:rgb(239,159,39)"/>
+<text x="200" y="364" class="t title" style="fill:rgb(250,199,117)">Redis</text>
+<text x="200" y="381" class="t sub" style="fill:rgb(239,159,39)">answer cache (5min TTL, per-user key)</text>
+<text x="200" y="397" class="t sub" style="fill:rgb(239,159,39)">rate limit — fixed window, fail-open</text>
+
+<!-- PostgreSQL -->
+<rect x="450" y="344" width="240" height="66" rx="8" class="box" style="fill:rgb(60,52,137);stroke:rgb(175,169,236)"/>
+<text x="570" y="364" class="t title" style="fill:rgb(206,203,246)">PostgreSQL</text>
+<text x="570" y="381" class="t sub" style="fill:rgb(175,169,236)">users (RBAC role)</text>
+<text x="570" y="397" class="t sub" style="fill:rgb(175,169,236)">chat_history (audit trail)</text>
+
+<line x1="380" y1="302" x2="380" y2="344" class="arr" marker-end="url(#arrow2)"/>
+<text x="392" y="325" class="lbl">cache miss</text>
+
+<!-- LLM Gateway layer (in-process today) -->
+<line x1="380" y1="410" x2="380" y2="454" class="arr" marker-end="url(#arrow2)"/>
+<text x="392" y="435" class="lbl">on cache miss + rate-limit OK</text>
+
+<rect x="200" y="454" width="360" height="94" rx="10" class="box" style="fill:rgb(120,45,45);stroke:rgb(236,150,150)"/>
+<text x="380" y="474" class="t title" style="fill:rgb(245,190,190)">LLM Gateway (in-process, ask_llm())</text>
+<text x="380" y="494" class="t sub" style="fill:rgb(236,150,150)">tenacity retry · 3x exp. backoff (1-8s)</text>
+<text x="380" y="511" class="t sub" style="fill:rgb(236,150,150)">30s per-call timeout · model fallback chain</text>
+<text x="380" y="528" class="t sub" style="fill:rgb(236,150,150)">circuit breaker + queue: planned (see README §4)</text>
+
+<line x1="380" y1="548" x2="380" y2="586" class="arr" marker-end="url(#arrow2)"/>
+<text x="392" y="570" class="lbl">HTTPS</text>
+
+<!-- LLM APIs -->
+<rect x="220" y="586" width="320" height="60" rx="8" class="box" style="fill:rgb(8,80,65);stroke:rgb(93,202,165)"/>
+<text x="380" y="606" class="t title" style="fill:rgb(159,225,203)">Groq LLM API</text>
+<text x="380" y="623" class="t sub" style="fill:rgb(93,202,165)">primary: groq/compound → fallback: llama3-8b-8192</text>
+
+<!-- Observability branch -->
+<line x1="700" y1="243" x2="700" y2="700" class="arr" style="stroke-dasharray:3 3"/>
+<line x1="700" y1="700" x2="600" y2="700" class="arr" marker-end="url(#arrow2)" style="stroke-dasharray:3 3"/>
+<text x="710" y="470" class="lbl" transform="rotate(90 710 470)">/metrics scraped every 15s</text>
+
+<rect x="40" y="672" width="200" height="56" rx="8" class="box" style="fill:rgb(68,68,65);stroke:rgb(180,178,169)"/>
+<text x="140" y="692" class="t title" style="fill:rgb(211,209,199)">Prometheus</text>
+<text x="140" y="709" class="t sub" style="fill:rgb(180,178,169)">requests · latency · tokens</text>
+
+<line x1="140" y1="728" x2="140" y2="762" class="arr" marker-end="url(#arrow2)"/>
+
+<rect x="40" y="762" width="200" height="56" rx="8" class="box" style="fill:rgb(68,68,65);stroke:rgb(180,178,169)"/>
+<text x="140" y="782" class="t title" style="fill:rgb(211,209,199)">Grafana</text>
+<text x="140" y="799" class="t sub" style="fill:rgb(180,178,169)">dashboards + alerts</text>
+
+<!-- Logging branch -->
+<line x1="700" y1="243" x2="700" y2="672" class="arr" style="stroke-dasharray:3 3" marker-end="url(#arrow2)"/>
+
+<rect x="600" y="672" width="200" height="56" rx="8" class="box" style="fill:rgb(68,68,65);stroke:rgb(180,178,169)" transform="translate(-100,0)"/>
+<text x="600" y="692" class="t title" style="fill:rgb(211,209,199)">Filebeat sidecar</text>
+<text x="600" y="709" class="t sub" style="fill:rgb(180,178,169)">tails pod logs</text>
+
+<line x1="600" y1="728" x2="600" y2="762" class="arr" marker-end="url(#arrow2)"/>
+
+<rect x="500" y="762" width="200" height="56" rx="8" class="box" style="fill:rgb(68,68,65);stroke:rgb(180,178,169)"/>
+<text x="600" y="782" class="t title" style="fill:rgb(211,209,199)">ELK Stack</text>
+<text x="600" y="799" class="t sub" style="fill:rgb(180,178,169)">Logstash → Elasticsearch → Kibana</text>
+
+<!-- Future: background queue (dashed, planned) -->
+<rect x="40" y="860" width="680" height="130" rx="12" class="box" style="fill:rgb(46,46,44);stroke:rgb(156,154,146);stroke-dasharray:5 4"/>
+<text x="380" y="884" class="t title" style="fill:rgb(211,209,199)">Planned at higher scale (§4/§5) — not deployed today</text>
+<text x="380" y="908" class="t sub" style="fill:rgb(194,192,182)">Background queue (SQS / RQ / Celery) between the API and the LLM Gateway —</text>
+<text x="380" y="926" class="t sub" style="fill:rgb(194,192,182)">decouples slow/long LLM calls from the request/response cycle, absorbs bursts</text>
+<text x="380" y="944" class="t sub" style="fill:rgb(194,192,182)">above 100-500 RPS, and lets /chat return 202 + poll/webhook for slow answers.</text>
+<text x="380" y="968" class="t sub" style="fill:rgb(194,192,182)">Circuit breaker in the LLM Gateway trips on sustained provider failures.</text>
+
+<line x1="380" y1="1000" x2="380" y2="1020" class="arr" style="stroke-dasharray:3 3"/>
+</svg>

@@ -7,4 +7,5 @@ terraform.tfstate.backup
 *.pem
 *.key
 .terraform.lock.hcl
-app/test.db
+test.db
+*.db

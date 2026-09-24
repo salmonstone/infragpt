@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 20
     rate_limit_window: int = 60  # per minute
 
+    # Dev-only bootstrap users, seeded only when the users table is empty.
+    # Override via env in any shared environment — never rely on these defaults past local dev.
+    seed_admin_username: str = "admin"
+    seed_admin_password: str = "admin123"
+    seed_user_username: str = "user1"
+    seed_user_password: str = "user123"
+
     class Config:
         env_file = ".env"
 
