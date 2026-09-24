@@ -12,7 +12,7 @@ Always structure your answers:
 3. Best practice tip at end
 Use markdown formatting. Be concise but complete."""
 
-MODELS = ["groq/compound", "llama3-8b-8192"]  # primary + fallback
+MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]  # primary + fallback
 
 client = Groq(api_key=settings.groq_api_key)
 

@@ -7,6 +7,8 @@ pipeline {
     DOCKERHUB_REPO        = 'salmonstone/infragpt'
     IMAGE_TAG             = "${BUILD_NUMBER}"
     GROQ_API_KEY          = credentials('groq-api-key')
+    JWT_SECRET_KEY        = credentials('jwt-secret-key')
+    POSTGRES_PASSWORD     = credentials('postgres-db-password')
     K8S_NAMESPACE         = 'infragpt'
     AWS_REGION            = 'ap-south-1'
     CLUSTER_NAME          = 'infragpt-cluster'
@@ -136,6 +138,8 @@ pipeline {
  
           kubectl create secret generic infragpt-secrets \
             --from-literal=GROQ_API_KEY=${GROQ_API_KEY} \
+            --from-literal=JWT_SECRET_KEY=${JWT_SECRET_KEY} \
+            --from-literal=POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
             --namespace=${K8S_NAMESPACE} \
             --dry-run=client -o yaml | kubectl apply -f -
         '''

@@ -84,7 +84,7 @@
 <!-- LLM APIs -->
 <rect x="220" y="586" width="320" height="60" rx="8" class="box" style="fill:rgb(8,80,65);stroke:rgb(93,202,165)"/>
 <text x="380" y="606" class="t title" style="fill:rgb(159,225,203)">Groq LLM API</text>
-<text x="380" y="623" class="t sub" style="fill:rgb(93,202,165)">primary: groq/compound → fallback: llama3-8b-8192</text>
+<text x="380" y="623" class="t sub" style="fill:rgb(93,202,165)">primary: openai/gpt-oss-120b → fallback: openai/gpt-oss-20b</text>
 
 <!-- Observability branch -->
 <line x1="700" y1="243" x2="700" y2="700" class="arr" style="stroke-dasharray:3 3"/>
