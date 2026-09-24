@@ -10,6 +10,14 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ .Release.Name }}-postgres-data
   namespace: {{ .Values.namespace }}
+  annotations:
+    # Keep the PVC (and its underlying EBS volume/data) around on
+    # `helm uninstall` — a bound PVC's spec is otherwise immutable, so a
+    # `helm upgrade --force` (delete+recreate) against this same resource
+    # is what caused the "spec is immutable" deploy failure this chart hit;
+    # that's fixed by dropping --force from the Jenkinsfile, but this
+    # annotation is the same protection for the uninstall path too.
+    helm.sh/resource-policy: keep
 spec:
   accessModes: ["ReadWriteOnce"]
   storageClassName: {{ .Values.postgres.storageClassName }}
