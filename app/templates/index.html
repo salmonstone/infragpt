@@ -168,6 +168,7 @@ function setSession(token,username,role){
   localStorage.setItem('infragpt_user',username);
   localStorage.setItem('infragpt_role',role);
   applySessionUI(username,role);
+  loadOwnHistory();
 }
 function applySessionUI(username,role){
   userLabel.textContent=username+' ('+role+')';
@@ -184,6 +185,34 @@ function logout(){
   logoutBtn.style.display='none';
   usersBtn.style.display='none';
   loginOverlay.style.display='flex';
+  // The chat pane is plain DOM state, not tied to any account — without
+  // this, switching who's logged in (in the same tab) leaves the previous
+  // person's messages sitting on screen even though the server-side data
+  // was always correctly isolated per-user. Wipe it every time identity
+  // changes, in either direction.
+  clearChatUI();
+}
+function clearChatUI(){
+  chat.querySelectorAll('.msg').forEach(el=>el.remove());
+  document.getElementById('welcome').style.display='';
+}
+// Populate the chat pane with *this* user's own saved history (already
+// isolated server-side by /history) so logging in doesn't just show a
+// blank screen for someone who's chatted before.
+async function loadOwnHistory(){
+  clearChatUI();
+  try{
+    const r=await fetch('/history',{headers:{'Authorization':'Bearer '+getToken()}});
+    if(!r.ok)return;
+    const rows=await r.json();
+    if(!rows.length)return;
+    [...rows].reverse().forEach(row=>{ // API returns newest-first; render oldest-first
+      addMsg('user',row.question);
+      addMsg('bot',row.answer);
+    });
+  }catch(err){
+    // Non-fatal — an empty/fresh chat pane is a fine fallback.
+  }
 }
 function toggleAuthMode(e){
   e.preventDefault();
@@ -228,6 +257,7 @@ async function doAuth(e){
 // Restore session on load if we already have a token (skip re-login on refresh).
 if(getToken()){
   applySessionUI(localStorage.getItem('infragpt_user')||'signed in',getRole()||'user');
+  loadOwnHistory();
 }
 
 // ---- Admin: Users panel ----
