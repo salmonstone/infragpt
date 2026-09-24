@@ -74,7 +74,20 @@ textarea::placeholder{color:var(--mu);}
     <div style='width:36px;height:36px;background:linear-gradient(135deg,#00d9ff,#7ee787);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;'>⚡</div>
     <div><div class='logo'>InfraGPT</div><div class='sub'>AI-Powered DevOps Assistant</div></div>
   </div>
-  <div class='pill'><div class='dot'></div>Online</div>
+  <div style='display:flex;align-items:center;gap:10px;'>
+    <div class='pill' id='userPill' style='display:none;'><div class='dot'></div><span id='userLabel'></span></div>
+    <button id='logoutBtn' onclick='logout()' style='display:none;background:transparent;border:1px solid var(--bdr);color:var(--mu);padding:4px 10px;border-radius:20px;font-size:.72rem;font-family:"JetBrains Mono",monospace;cursor:pointer;'>logout</button>
+  </div>
+</div>
+<div id='loginOverlay' style='position:fixed;inset:0;background:rgba(13,17,23,.92);display:flex;align-items:center;justify-content:center;z-index:50;'>
+  <form id='loginForm' onsubmit='doLogin(event)' style='background:var(--sur);border:1px solid var(--bdr);border-radius:12px;padding:28px;width:280px;display:flex;flex-direction:column;gap:12px;'>
+    <div class='logo' style='text-align:center;'>InfraGPT</div>
+    <div class='sub' style='text-align:center;margin-bottom:8px;'>Sign in to chat</div>
+    <input id='loginUser' placeholder='username' autocomplete='username' style='background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;color:var(--tx);font-family:"JetBrains Mono",monospace;font-size:.85rem;outline:none;'/>
+    <input id='loginPass' type='password' placeholder='password' autocomplete='current-password' style='background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:10px 12px;color:var(--tx);font-family:"JetBrains Mono",monospace;font-size:.85rem;outline:none;'/>
+    <button type='submit' class='sbtn' style='width:100%;border-radius:8px;'>Sign in</button>
+    <div id='loginErr' style='color:#f87171;font-size:.72rem;text-align:center;min-height:14px;'></div>
+  </form>
 </div>
 <div class='qbar'>
   <button class='qp' onclick="qa('How do I create an EKS cluster with Terraform?')">🏗️ EKS+Terraform</button>
@@ -116,6 +129,58 @@ const chat=document.getElementById('chat');
 const inp=document.getElementById('inp');
 const btn=document.getElementById('btn');
 const typing=document.getElementById('typing');
+const loginOverlay=document.getElementById('loginOverlay');
+const loginErr=document.getElementById('loginErr');
+const userPill=document.getElementById('userPill');
+const userLabel=document.getElementById('userLabel');
+const logoutBtn=document.getElementById('logoutBtn');
+
+// Demo-grade token storage: localStorage keeps you signed in across page
+// reloads, which is what you want when recording a demo. It's readable by
+// any script on the page (XSS risk), so a real production UI would use an
+// httpOnly cookie set by the server instead — see README's SSO/OIDC section.
+function getToken(){return localStorage.getItem('infragpt_token');}
+function setSession(token,username,role){
+  localStorage.setItem('infragpt_token',token);
+  localStorage.setItem('infragpt_user',username);
+  userLabel.textContent=username+' ('+role+')';
+  userPill.style.display='flex';
+  logoutBtn.style.display='block';
+  loginOverlay.style.display='none';
+}
+function logout(){
+  localStorage.removeItem('infragpt_token');
+  localStorage.removeItem('infragpt_user');
+  userPill.style.display='none';
+  logoutBtn.style.display='none';
+  loginOverlay.style.display='flex';
+}
+async function doLogin(e){
+  e.preventDefault();
+  loginErr.textContent='';
+  const u=document.getElementById('loginUser').value.trim();
+  const p=document.getElementById('loginPass').value;
+  if(!u||!p){loginErr.textContent='enter both fields';return;}
+  try{
+    const r=await fetch('/auth/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'username='+encodeURIComponent(u)+'&password='+encodeURIComponent(p)
+    });
+    const d=await r.json();
+    if(!r.ok){loginErr.textContent=d.detail||'login failed';return;}
+    setSession(d.access_token,u,d.role);
+  }catch(err){
+    loginErr.textContent='connection error';
+  }
+}
+// Restore session on load if we already have a token (skip re-login on refresh).
+if(getToken()){
+  userLabel.textContent=(localStorage.getItem('infragpt_user')||'signed in');
+  userPill.style.display='flex';
+  logoutBtn.style.display='block';
+  loginOverlay.style.display='none';
+}
 function rs(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px';}
 function hk(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
 function qa(t){inp.value=t;rs(inp);send();}
@@ -156,15 +221,22 @@ async function send(){
   try{
     const r=await fetch('/chat',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},
       body:JSON.stringify({message:t})
     });
+    if(r.status===401||r.status===403){
+      typing.classList.remove('show');
+      addMsg('bot','⚠️ Session expired — please sign in again.');
+      logout();
+      btn.disabled=false;
+      return;
+    }
     const d=await r.json();
     typing.classList.remove('show');
-    addMsg('bot',d.reply||d.error||'Something went wrong.');
+    addMsg('bot',d.reply||d.detail||'Something went wrong.');
   }catch(err){
     typing.classList.remove('show');
-    addMsg('bot','❌ Connection error. Is the Flask server running?');
+    addMsg('bot','❌ Connection error. Is the API server running?');
   }
   btn.disabled=false;
   inp.focus();
