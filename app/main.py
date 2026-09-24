@@ -1,7 +1,9 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.responses import PlainTextResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from datetime import datetime
 import logging
@@ -20,20 +22,37 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="InfraGPT", version="2.0.0")
-templates = Jinja2Templates(directory="templates")
-
-
-@app.on_event("startup")
-def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     init_db()
-    # Seed a default admin user if DB is empty
+    # Seed bootstrap users if the DB is empty. Credentials come from settings
+    # (env-overridable) rather than being hard-coded — see config.py.
     db = next(get_db())
-    if not db.query(User).first():
-        db.add(User(username="admin", hashed_password=hash_password("admin123"), role="admin"))
-        db.add(User(username="user1", hashed_password=hash_password("user123"), role="user"))
-        db.commit()
-    db.close()
+    try:
+        if not db.query(User).first():
+            db.add(User(
+                username=settings.seed_admin_username,
+                hashed_password=hash_password(settings.seed_admin_password),
+                role="admin",
+            ))
+            db.add(User(
+                username=settings.seed_user_username,
+                hashed_password=hash_password(settings.seed_user_password),
+                role="user",
+            ))
+            try:
+                db.commit()
+            except IntegrityError:
+                # A sibling Uvicorn worker's lifespan hook won the same race
+                # and already inserted these usernames — nothing to do.
+                db.rollback()
+    finally:
+        db.close()
+    yield
+
+
+app = FastAPI(title="InfraGPT", version="2.0.0", lifespan=lifespan)
+templates = Jinja2Templates(directory="templates")
 
 
 # ---------- schemas ----------

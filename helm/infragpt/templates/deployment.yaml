@@ -32,6 +32,22 @@ spec:
           volumeMounts:
             - name: app-logs
               mountPath: /var/log/infragpt
+        {{- if .Values.postgres.enabled }}
+        - name: wait-for-postgres
+          image: busybox:1.36
+          # Postgres and the app deploy together in one Helm release with no
+          # ordering guarantee, so the app can win the race and start before
+          # Postgres is accepting connections. Rather than let that surface
+          # as a CrashLoopBackOff on the app container, block here instead.
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z -w2 {{ .Release.Name }}-postgres 5432; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+        {{- end }}
       containers:
         - name: {{ .Release.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -44,6 +60,24 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secret.name }}
                   key: {{ .Values.secret.groqApiKeyRef }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secret.name }}
+                  key: {{ .Values.secret.jwtSecretRef }}
+            {{- if .Values.postgres.enabled }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secret.name }}
+                  key: {{ .Values.secret.postgresPasswordRef }}
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgres.user }}:$(POSTGRES_PASSWORD)@{{ .Release.Name }}-postgres:5432/{{ .Values.postgres.database }}"
+            {{- end }}
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis:6379/0"
+            {{- end }}
             - name: POD_NAME
               valueFrom:
                 fieldRef:

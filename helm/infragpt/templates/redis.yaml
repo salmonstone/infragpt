@@ -1,0 +1,60 @@
+{{- if .Values.redis.enabled }}
+# In-cluster Redis (single replica, emptyDir). It's only used as an answer
+# cache and a rate-limit counter — both are fine to lose on a pod restart
+# (cache.py already fails open if Redis is unreachable at all), so no PVC
+# and no auth needed for this deployment. Swap for AWS ElastiCache by
+# pointing REDIS_URL at its endpoint if that durability/HA is ever needed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-redis
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Release.Name }}-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-redis
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-redis
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          ports:
+            - containerPort: 6379
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-redis
+  namespace: {{ .Values.namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ .Release.Name }}-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+{{- end }}

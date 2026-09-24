@@ -7,6 +7,32 @@ namespace: infragpt
 secret:
   name: infragpt-secrets
   groqApiKeyRef: GROQ_API_KEY
+  jwtSecretRef: JWT_SECRET_KEY
+  postgresPasswordRef: POSTGRES_PASSWORD
+postgres:
+  enabled: true
+  image: postgres:15-alpine
+  user: infragpt
+  database: infragpt
+  storage: 2Gi
+  storageClassName: gp2-immediate
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+redis:
+  enabled: true
+  image: redis:7-alpine
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
 service:
   type: ClusterIP
   port: 80

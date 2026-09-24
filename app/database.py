@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 from config import settings
@@ -29,7 +30,20 @@ class ChatHistory(Base):
 
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    """Create tables if they don't exist yet.
+
+    `create_all` checks information_schema first, but that check-then-create
+    is not atomic across processes: with multiple Uvicorn workers (each
+    running this at startup), two workers can both see "table missing" and
+    race to CREATE TABLE, and the loser hits a Postgres unique-violation on
+    its own catalog sequence rather than a clean "already exists". Since the
+    only possible cause of that specific error here is a concurrent sibling
+    worker that's already creating the same schema, it's safe to swallow.
+    """
+    try:
+        Base.metadata.create_all(bind=engine)
+    except (IntegrityError, ProgrammingError):
+        pass
 
 
 def get_db():

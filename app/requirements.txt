@@ -6,7 +6,7 @@ redis==5.0.4
 psycopg2-binary==2.9.9
 sqlalchemy==2.0.30
 # JWT via stdlib hmac + hashlib (no PyJWT needed)
-# password hashing via stdlib hashlib (no passlib needed in this env)
+bcrypt==4.1.3
 python-multipart==0.0.9
 prometheus-client==0.20.0
 tenacity==8.3.0
