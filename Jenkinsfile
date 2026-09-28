@@ -276,6 +276,11 @@ pipeline {
     failure {
       echo 'PIPELINE FAILED - rolling back Helm release...'
       sh 'helm rollback ${HELM_RELEASE} 0 -n ${K8S_NAMESPACE} || true'
+      withCredentials([string(credentialsId: 'atlasos-hook', variable: 'ATLASOS_TOKEN')]) {
+        sh '''curl -s --max-time 10 -X POST https://harmonics-emblem-varying.ngrok-free.dev/webhook/jenkins \
+          -H "Content-Type: application/json" -H "X-AtlasOS-Token: $ATLASOS_TOKEN" \
+          -d "{\\"job\\": \\"$JOB_NAME\\", \\"build\\": $BUILD_NUMBER, \\"status\\": \\"FAILURE\\"}" || true'''
+      }
     }
   }
 }
