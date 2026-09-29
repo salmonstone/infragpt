@@ -2,6 +2,7 @@ pipeline {
   agent any
 
   environment {
+    PATH         = "/usr/local/bin:/usr/bin:/bin:${env.PATH}"
     AWS_REGION   = 'ap-south-1'
     CLUSTER_NAME = 'infragpt-cluster'
     HELM_RELEASE = 'infragpt'
@@ -63,6 +64,20 @@ pipeline {
 
           kubectl delete namespace ${K8S_NAMESPACE} --ignore-not-found=true
           kubectl delete namespace ${ELK_NAMESPACE} --ignore-not-found=true
+        '''
+      }
+    }
+
+    stage('Delete Nginx Ingress') {
+      steps {
+        sh '''
+          # Delete the Nginx Ingress controller service so AWS deprovisions the NLB
+          # before Terraform tries to destroy the VPC (otherwise VPC destroy hangs)
+          kubectl delete svc ingress-nginx-controller -n ingress-nginx --ignore-not-found=true
+          echo "Waiting 60s for NLB to be deprovisioned by AWS..."
+          sleep 60
+          kubectl delete namespace ingress-nginx --ignore-not-found=true || true
+          kubectl delete namespace cert-manager  --ignore-not-found=true || true
         '''
       }
     }
